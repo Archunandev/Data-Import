@@ -1,13 +1,399 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Page Title</title>
+    <title>Excel Data Import Widget</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .upload-container {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            background: #f9f9f9;
+        }
+        .upload-container:hover {
+            border-color: #007bff;
+            background: #f0f8ff;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .upload-btn {
+            background: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .upload-btn:hover {
+            background: #0056b3;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+            display: none;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .mapping-container {
+            margin: 20px 0;
+            display: none;
+        }
+        .mapping-row {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+            align-items: center;
+        }
+        .mapping-row label {
+            flex: 1;
+            font-weight: bold;
+        }
+        .mapping-row select {
+            flex: 2;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .process-btn {
+            background: #28a745;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 20px;
+        }
+        .process-btn:hover {
+            background: #218838;
+        }
+        .process-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            max-height: 300px;
+            overflow-y: auto;
+            display: block;
+        }
+        .preview-table table {
+            width: 100%;
+        }
+        .preview-table th, .preview-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .preview-table th {
+            background: #007bff;
+            color: white;
+            position: sticky;
+            top: 0;
+        }
+        .progress-container {
+            display: none;
+            margin: 20px 0;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #28a745;
+            width: 0%;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+    </style>
 </head>
 <body>
+    <h1>Excel Data Import to Zoho Creator</h1>
+    
+    <div class="upload-container">
+        <h3>📁 Upload Excel File</h3>
+        <p>Select an Excel file (.xlsx, .xls) to import data</p>
+        <input type="file" id="fileInput" accept=".xlsx, .xls">
+        <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
+            Choose File
+        </button>
+        <p id="fileName" style="margin-top: 10px; color: #666;"></p>
+    </div>
 
-<h1>This is a Heading</h1>
-<p>This is a paragraph.</p>
+    <div id="status" class="status"></div>
 
+    <div id="mappingContainer" class="mapping-container">
+        <h3>Map Excel Columns to Form Fields</h3>
+        <div id="mappingFields"></div>
+        <button class="process-btn" onclick="processAndInsert()">Process & Insert Data</button>
+    </div>
+
+    <div id="progressContainer" class="progress-container">
+        <h3>Processing Records...</h3>
+        <div class="progress-bar">
+            <div id="progressFill" class="progress-fill">0%</div>
+        </div>
+        <p id="progressText">0 of 0 records processed</p>
+    </div>
+
+    <div id="preview" class="preview-table" style="display: none;">
+        <h3>Data Preview (First 5 rows)</h3>
+        <table id="previewTable"></table>
+    </div>
+
+    <script>
+        let excelData = [];
+        let excelHeaders = [];
+        
+        // Define your Zoho Creator form fields here
+        const formFields = [
+            { apiName: 'Name', label: 'Name' },
+            { apiName: 'Email', label: 'Email' },
+            { apiName: 'Phone', label: 'Phone' },
+            { apiName: 'Company', label: 'Company' },
+            { apiName: 'Status', label: 'Status' }
+            // Add more fields as per your form
+        ];
+
+        document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            document.getElementById('fileName').textContent = `Selected: ${file.name}`;
+            showStatus('Reading Excel file...', 'info');
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    
+                    // Get first sheet
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                    
+                    if (jsonData.length < 2) {
+                        showStatus('Excel file must contain headers and at least one data row', 'error');
+                        return;
+                    }
+
+                    excelHeaders = jsonData[0];
+                    excelData = jsonData.slice(1).filter(row => row.some(cell => cell !== undefined && cell !== ''));
+                    
+                    showStatus(`Successfully loaded ${excelData.length} rows from Excel`, 'success');
+                    displayMapping();
+                    displayPreview();
+                } catch (error) {
+                    showStatus('Error reading Excel file: ' + error.message, 'error');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function displayMapping() {
+            const container = document.getElementById('mappingFields');
+            container.innerHTML = '';
+
+            formFields.forEach(field => {
+                const row = document.createElement('div');
+                row.className = 'mapping-row';
+                
+                const label = document.createElement('label');
+                label.textContent = field.label + ':';
+                
+                const select = document.createElement('select');
+                select.id = 'map_' + field.apiName;
+                
+                const defaultOption = document.createElement('option');
+                defaultOption.value = '';
+                defaultOption.textContent = '-- Select Column --';
+                select.appendChild(defaultOption);
+                
+                excelHeaders.forEach((header, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = header;
+                    
+                    // Auto-match if names are similar
+                    if (header.toLowerCase().includes(field.label.toLowerCase()) || 
+                        field.label.toLowerCase().includes(header.toLowerCase())) {
+                        option.selected = true;
+                    }
+                    
+                    select.appendChild(option);
+                });
+                
+                row.appendChild(label);
+                row.appendChild(select);
+                container.appendChild(row);
+            });
+
+            document.getElementById('mappingContainer').style.display = 'block';
+        }
+
+        function displayPreview() {
+            const table = document.getElementById('previewTable');
+            table.innerHTML = '';
+            
+            // Create header
+            const thead = table.createTHead();
+            const headerRow = thead.insertRow();
+            excelHeaders.forEach(header => {
+                const th = document.createElement('th');
+                th.textContent = header;
+                headerRow.appendChild(th);
+            });
+            
+            // Create body with first 5 rows
+            const tbody = table.createTBody();
+            excelData.slice(0, 5).forEach(row => {
+                const tr = tbody.insertRow();
+                excelHeaders.forEach((_, index) => {
+                    const td = tr.insertCell();
+                    td.textContent = row[index] || '';
+                });
+            });
+            
+            document.getElementById('preview').style.display = 'block';
+        }
+
+        async function processAndInsert() {
+            // Get mapping
+            const mapping = {};
+            formFields.forEach(field => {
+                const select = document.getElementById('map_' + field.apiName);
+                if (select.value !== '') {
+                    mapping[field.apiName] = parseInt(select.value);
+                }
+            });
+
+            if (Object.keys(mapping).length === 0) {
+                showStatus('Please map at least one field', 'error');
+                return;
+            }
+
+            // Show progress
+            document.getElementById('progressContainer').style.display = 'block';
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
+
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (let i = 0; i < excelData.length; i++) {
+                const row = excelData[i];
+                const recordData = {};
+                
+                // Map data according to field mapping
+                for (const [fieldName, columnIndex] of Object.entries(mapping)) {
+                    recordData[fieldName] = row[columnIndex] || '';
+                }
+
+                try {
+                    // Insert to Zoho Creator
+                    await insertToZohoCreator(recordData);
+                    successCount++;
+                } catch (error) {
+                    errorCount++;
+                    console.error('Error inserting row ' + (i + 1), error);
+                }
+
+                // Update progress
+                const progress = ((i + 1) / excelData.length * 100).toFixed(0);
+                progressFill.style.width = progress + '%';
+                progressFill.textContent = progress + '%';
+                progressText.textContent = `${i + 1} of ${excelData.length} records processed`;
+            }
+
+            // Show final status
+            showStatus(
+                `Import completed: ${successCount} successful, ${errorCount} failed`, 
+                errorCount === 0 ? 'success' : 'error'
+            );
+        }
+
+        async function insertToZohoCreator(recordData) {
+            // Using Zoho Creator Widget SDK
+            try {
+                // Method 1: Using ZOHO.CREATOR.API (if available in widget)
+                if (window.ZOHO && ZOHO.CREATOR && ZOHO.CREATOR.API) {
+                    await ZOHO.CREATOR.API.addRecord({
+                        formName: "YOUR_FORM_LINK_NAME", // Replace with your form link name
+                        data: recordData
+                    });
+                }
+                // Method 2: Using custom function via ZOHO.CREATOR.UTIL
+                else if (window.ZOHO && ZOHO.CREATOR && ZOHO.CREATOR.UTIL) {
+                    await ZOHO.CREATOR.UTIL.setFieldValue({
+                        fieldName: Object.keys(recordData),
+                        value: Object.values(recordData)
+                    });
+                }
+                
+                return true;
+            } catch (error) {
+                console.error('Zoho Creator API Error:', error);
+                throw error;
+            }
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + type;
+            status.style.display = 'block';
+            
+            if (type === 'success' || type === 'error') {
+                setTimeout(() => {
+                    status.style.display = 'none';
+                }, 5000);
+            }
+        }
+
+        // Initialize Zoho Creator Widget SDK
+        if (window.ZOHO) {
+            ZOHO.embeddedApp.on("PageLoad", function(data) {
+                console.log("Widget loaded successfully");
+            });
+
+            ZOHO.embeddedApp.init();
+        }
+    </script>
 </body>
 </html>
-
