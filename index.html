@@ -745,51 +745,66 @@ function chunkArray(array, size) {
         }
 
         function importToZoho() {
-            if (excelData.length === 0) {
-                alert('No data to import!');
-                return;
-            }
+          
+    if (excelData.length === 0) {
+        alert("No data to import!");
+        return;
+    }
 
-            // Get column mappings
-            const mappings = {};
-            headers.forEach(header => {
-                const select = document.getElementById(`map_${header}`);
-                if (select && select.value !== 'Select Field') {
-                    mappings[header] = select.value;
-                }
-            });
+    const REQUIRED_FIELDS = {
+        "Donor Code": "Donor_Code",
+        "Receipt Number": "Receipt_Number",
+        "AMount": "Amount",
+        "Notes": "Notes"
+    };
 
-            // Prepare data for Zoho Creator
-            const dataToSend = {
-                headers: headers,
-                mappings: mappings,
-                data: excelData,
-                totalRecords: excelData.length
-            };
+    // ---------- PREPARE CLEAN DATA ----------
+    const cleanedRecords = excelData.map(row => ({
+        Donor_Code: cleanText(row["Donor Code"]),
+        Receipt_Number: cleanText(row["Receipt Number"]),
+        Amount: cleanAmount(row["AMount"]),
+        Notes: cleanText(row["Notes"])
+    }));
 
-            // Show the data in console (for debugging)
-            console.log('Data to send to Zoho Creator:', dataToSend);
+    // ---------- BATCH (200) ----------
+    const batches = chunkArray(cleanedRecords, 200);
+    let currentBatch = 0;
 
-            // Here you would integrate with Zoho Creator API
-            // For now, we'll show a success message
-            alert(`Ready to import ${excelData.length} records to Zoho Creator!\n\nData structure:\n${JSON.stringify(dataToSend, null, 2)}`);
+    alert(`Starting import\nTotal Records: ${cleanedRecords.length}\nTotal Batches: ${batches.length}`);
 
-            // Example of how to send to Zoho Creator (you'll need to implement this based on your Zoho setup)
-            /*
-            ZOHO.CREATOR.init().then(function() {
-                ZOHO.CREATOR.API.addRecord({
-                    appName: "your-app-name",
-                    formName: "your-form-name",
-                    data: dataToSend
-                }).then(function(response) {
-                    console.log(response);
-                    alert('Data imported successfully!');
-                }).catch(function(error) {
-                    console.error(error);
-                    alert('Error importing data: ' + error.message);
-                });
-            });
-            */
+    // ---------- SEQUENTIAL INSERT ----------
+    function insertNextBatch() {
+        if (currentBatch >= batches.length) {
+            alert("✅ All records imported successfully!");
+            return;
+        }
+
+        const payload = {
+            data: batches[currentBatch]
+        };
+
+        console.log(`Uploading batch ${currentBatch + 1}/${batches.length}`, payload);
+
+        ZOHO.CREATOR.API.addRecord({
+            appName: "YOUR_APP_NAME",
+            formName: "YOUR_FORM_NAME",
+            data: payload.data
+        }).then(response => {
+            console.log("Batch Success:", response);
+            currentBatch++;
+            insertNextBatch(); // 🔁 Next batch
+        }).catch(error => {
+            console.error("Batch Failed:", error);
+            alert(`❌ Batch ${currentBatch + 1} failed. Check console.`);
+        });
+    }
+
+    // ---------- START ----------
+    ZOHO.embeddedApp.init().then(() => {
+        insertNextBatch();
+    });
+
+
         }
 
         // For Zoho Creator integration
