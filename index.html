@@ -480,15 +480,13 @@
                 </div>
             </div>
 
-            <div class="column-mapper" id="columnMapper">
-                <div class="mapper-title">🔄 Map Columns to Zoho Creator Fields</div>
-                <div id="mappingContainer"></div>
-            </div>
+           <div class="loading" id="uploadProgress">
+    <div class="spinner"></div>
+    <div id="progressText">Uploading batch 0 of 0</div>
+</div>
 
             <div class="action-buttons">
-                <button class="btn btn-primary" onclick="showColumnMapping()">
-                    🔄 Map Columns
-                </button>
+                
                 <button class="btn btn-success" onclick="importToZoho()">
                     ⬆️ Import to Zoho Creator
                 </button>
@@ -688,75 +686,14 @@ function chunkArray(array, size) {
             showEmptyState();
         }
 
-        function showColumnMapping() {
-            const mapper = document.getElementById('columnMapper');
-            const container = document.getElementById('mappingContainer');
-            
-            // Clear existing mappings
-            container.innerHTML = '';
-            
-            // Create mapping interface for each column
-            headers.forEach(header => {
-                const row = document.createElement('div');
-                row.className = 'mapping-row';
-                
-                const label = document.createElement('div');
-                label.className = 'mapping-label';
-                label.textContent = header;
-                
-                const arrow = document.createElement('div');
-                arrow.className = 'mapping-arrow';
-                arrow.textContent = '→';
-                
-                const select = document.createElement('select');
-                select.className = 'mapping-select';
-                select.id = `map_${header}`;
-                
-                // Add options (these would be fetched from Zoho Creator API)
-                const options = [
-                    'Select Field',
-                    'Name',
-                    'Email',
-                    'Phone',
-                    'Address',
-                    'Date',
-                    'Amount',
-                    'Description',
-                    'Status',
-                    'Category',
-                    'Custom Field 1',
-                    'Custom Field 2'
-                ];
-                
-                options.forEach(opt => {
-                    const option = document.createElement('option');
-                    option.value = opt;
-                    option.textContent = opt;
-                    select.appendChild(option);
-                });
-                
-                row.appendChild(label);
-                row.appendChild(arrow);
-                row.appendChild(select);
-                container.appendChild(row);
-            });
-            
-            mapper.classList.add('show');
-        }
+        
 
         function importToZoho() {
           
-    if (excelData.length === 0) {
+   if (excelData.length === 0) {
         alert("No data to import!");
         return;
     }
-
-    const REQUIRED_FIELDS = {
-        "Donor Code": "Donor_Code",
-        "Receipt Number": "Receipt_Number",
-        "AMount": "Amount",
-        "Notes": "Notes"
-    };
 
     // ---------- PREPARE CLEAN DATA ----------
     const cleanedRecords = excelData.map(row => ({
@@ -766,43 +703,47 @@ function chunkArray(array, size) {
         Notes: cleanText(row["Notes"])
     }));
 
-    // ---------- BATCH (200) ----------
     const batches = chunkArray(cleanedRecords, 200);
     let currentBatch = 0;
 
-    alert(`Starting import\nTotal Records: ${cleanedRecords.length}\nTotal Batches: ${batches.length}`);
+    // Show progress UI
+    const progressBox = document.getElementById("uploadProgress");
+    const progressText = document.getElementById("progressText");
+    progressBox.classList.add("show");
 
-    // ---------- SEQUENTIAL INSERT ----------
     function insertNextBatch() {
+
         if (currentBatch >= batches.length) {
-            alert("✅ All records imported successfully!");
+            progressText.innerText = "✅ Upload completed";
+            
+            setTimeout(() => {
+                progressBox.classList.remove("show");
+                alert("All records imported successfully!");
+            }, 1500);
+
             return;
         }
 
-        const payload = {
-            data: batches[currentBatch]
-        };
-
-        console.log(`Uploading batch ${currentBatch + 1}/${batches.length}`, payload);
+        progressText.innerText =
+            `Uploading batch ${currentBatch + 1} of ${batches.length}`;
 
         ZOHO.CREATOR.API.addRecord({
             appName: "YOUR_APP_NAME",
             formName: "YOUR_FORM_NAME",
-            data: payload.data
-        }).then(response => {
-            console.log("Batch Success:", response);
+            data: batches[currentBatch]
+        })
+        .then(() => {
             currentBatch++;
-            insertNextBatch(); // 🔁 Next batch
-        }).catch(error => {
-            console.error("Batch Failed:", error);
-            alert(`❌ Batch ${currentBatch + 1} failed. Check console.`);
+            setTimeout(insertNextBatch, 500); // Safe delay
+        })
+        .catch(error => {
+            console.error(error);
+            progressBox.classList.remove("show");
+            alert(`Batch ${currentBatch + 1} failed. Check console.`);
         });
     }
 
-    // ---------- START ----------
-    ZOHO.embeddedApp.init().then(() => {
-        insertNextBatch();
-    });
+    ZOHO.embeddedApp.init().then(insertNextBatch);;
 
 
         }
