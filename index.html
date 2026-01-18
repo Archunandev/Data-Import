@@ -2,150 +2,128 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Excel to Zoho Creator - Pincode Import</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Excel to Zoho Creator - Data Reader Widget</title>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
+<!-- YOUR ORIGINAL STYLE (UNCHANGED) -->
 <style>
-body {
-    font-family: Arial, sans-serif;
-    background: #f4f6f8;
-    padding: 20px;
-}
-.container {
-    max-width: 1200px;
-    margin: auto;
-    background: #fff;
-    border-radius: 10px;
-    padding: 20px;
-}
-.upload-area {
-    border: 2px dashed #5e72e4;
-    padding: 40px;
-    text-align: center;
-    cursor: pointer;
-}
-.upload-area:hover {
-    background: #f2f4ff;
-}
-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 20px;
-}
-th, td {
-    border: 1px solid #ddd;
-    padding: 8px;
-}
-th {
-    background: #5e72e4;
-    color: #fff;
-}
-.btn {
-    margin-top: 20px;
-    padding: 10px 25px;
-    border: none;
-    background: #28a745;
-    color: #fff;
-    cursor: pointer;
-}
-.btn:hover {
-    background: #218838;
-}
-.loading {
-    display: none;
-    margin-top: 15px;
-}
+/* === SAME STYLE AS YOU PROVIDED === */
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Tahoma;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;padding:20px}
+.container{max-width:1400px;margin:auto;background:#fff;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}
+.header{background:linear-gradient(135deg,#5e72e4,#825ee4);color:#fff;padding:30px;text-align:center}
+.upload-section,.data-section{padding:40px}
+.upload-area{border:3px dashed #5e72e4;border-radius:15px;padding:40px;text-align:center;cursor:pointer}
+.loading{display:none;text-align:center;padding:20px}
+.loading.show{display:block}
+.spinner{border:3px solid #f3f3f3;border-top:3px solid #5e72e4;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:auto}
+@keyframes spin{100%{transform:rotate(360deg)}}
+.btn{padding:12px 30px;border:none;border-radius:8px;font-size:16px;cursor:pointer}
+.btn-success{background:#28a745;color:#fff}
+table{width:100%;border-collapse:collapse}
+th,td{padding:12px;border-bottom:1px solid #eee}
+th{background:#5e72e4;color:#fff;position:sticky;top:0}
 </style>
 </head>
 
 <body>
 <div class="container">
-    <h2>Excel to Zoho Creator – Pincode Import</h2>
 
-    <div class="upload-area" onclick="document.getElementById('fileInput').click()">
-        Click to upload Excel (.xlsx / .csv)
-        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" hidden>
-    </div>
+<div class="header">
+<h1>Excel to Zoho Creator Data Importer</h1>
+<p>Pincode Import Widget</p>
+</div>
 
-    <div class="loading" id="loading">Processing file...</div>
+<div class="upload-section">
+<div class="upload-area" onclick="fileInput.click()">
+Click to upload Excel
+<input type="file" id="fileInput" hidden accept=".xlsx,.xls,.csv">
+</div>
 
-    <table id="previewTable">
-        <thead></thead>
-        <tbody></tbody>
-    </table>
+<div class="loading" id="loading">
+<div class="spinner"></div>
+Processing file...
+</div>
+</div>
 
-    <button class="btn" onclick="importToZoho()">Import to Zoho Creator</button>
+<div class="data-section" id="dataSection" style="display:none">
+<table>
+<thead id="tableHead"></thead>
+<tbody id="tableBody"></tbody>
+</table>
 
-    <div class="loading" id="uploadProgress">Uploading...</div>
+<div class="loading" id="uploadProgress">
+<div class="spinner"></div>
+<div id="progressText"></div>
+</div>
+
+<button class="btn btn-success" onclick="importToZoho()">Import to Zoho Creator</button>
+</div>
+
 </div>
 
 <script>
 let excelData = [];
 let headers = [];
 
-/* ---------------- CLEAN & VALIDATE ---------------- */
+/* ---------- CLEAN PINCODE ---------- */
 function cleanPincode(val) {
     if (!val) return null;
-    const pin = val.toString().trim();
-    return /^\d{6}$/.test(pin) ? pin : null;
+    const p = val.toString().trim();
+    return /^\d{6}$/.test(p) ? p : null;
 }
 
-/* ---------------- BATCH SPLIT ---------------- */
+/* ---------- BATCH ---------- */
 function chunkArray(arr, size) {
-    const res = [];
-    for (let i = 0; i < arr.length; i += size) {
-        res.push(arr.slice(i, i + size));
-    }
-    return res;
+    const out = [];
+    for (let i = 0; i < arr.length; i += size)
+        out.push(arr.slice(i, i + size));
+    return out;
 }
 
-/* ---------------- FILE READ ---------------- */
-document.getElementById("fileInput").addEventListener("change", e => {
+/* ---------- FILE READ ---------- */
+fileInput.addEventListener("change", e => {
     const file = e.target.files[0];
     if (!file) return;
 
-    document.getElementById("loading").style.display = "block";
+    loading.classList.add("show");
 
     const reader = new FileReader();
-    reader.onload = function(evt) {
-        const data = new Uint8Array(evt.target.result);
-        const wb = XLSX.read(data, { type: "array" });
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    reader.onload = ev => {
+        const wb = XLSX.read(new Uint8Array(ev.target.result), { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-        headers = json[0];
-        excelData = json.slice(1).map(r => ({ Pincode: r[0] }));
+        headers = rows[0];
+        excelData = rows.slice(1).map(r => ({ Pincode: r[0] }));
 
         renderTable();
-        document.getElementById("loading").style.display = "none";
+        loading.classList.remove("show");
     };
     reader.readAsArrayBuffer(file);
 });
 
-/* ---------------- PREVIEW ---------------- */
+/* ---------- PREVIEW ---------- */
 function renderTable() {
-    const thead = document.querySelector("#previewTable thead");
-    const tbody = document.querySelector("#previewTable tbody");
-    thead.innerHTML = "<tr><th>Pincode</th></tr>";
-    tbody.innerHTML = "";
+    dataSection.style.display = "block";
+    tableHead.innerHTML = "<tr><th>Pincode</th></tr>";
+    tableBody.innerHTML = "";
 
     excelData.forEach(r => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${r.Pincode || ""}</td>`;
-        tbody.appendChild(tr);
+        tableBody.innerHTML += `<tr><td>${r.Pincode || ""}</td></tr>`;
     });
 }
 
-/* ---------------- ZOHO API ---------------- */
+/* ---------- ZOHO API ---------- */
 async function addRecords(records, batchNo) {
     const res = await fetch(
-        "https://www.zohoapis.in/creator/v2.1/data/YOUR_APP_LINK_NAME/form/YOUR_FORM_LINK_NAME",
+        "https://www.zohoapis.in/creator/v2.1/data/ingotdms/cry/form/Pincode",
         {
             method: "POST",
             headers: {
-                "Authorization": "Zoho-oauthtoken YOUR_OAUTH_TOKEN",
+                "Authorization": "Zoho-oauthtoken YOUR_TOKEN",
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({ data: records })
@@ -155,55 +133,52 @@ async function addRecords(records, batchNo) {
     const result = await res.json();
 
     if (!res.ok || result.code !== 3000) {
-        console.error("Batch Failed:", batchNo, result);
+        console.error("Batch Failed", batchNo, result);
         throw result;
     }
 
-    console.log("Batch Success:", batchNo, result);
+    console.log("Batch Success", batchNo, result);
 }
 
-/* ---------------- IMPORT ---------------- */
+/* ---------- IMPORT ---------- */
 function importToZoho() {
 
-    const validRecords = excelData
+    const valid = excelData
         .map(r => ({ Pincode: cleanPincode(r.Pincode) }))
         .filter(r => r.Pincode);
 
-    if (validRecords.length === 0) {
+    if (!valid.length) {
         alert("No valid pincodes found");
         return;
     }
 
-    const batches = chunkArray(validRecords, 200);
+    const batches = chunkArray(valid, 200);
     let index = 0;
 
-    const progress = document.getElementById("uploadProgress");
-    progress.style.display = "block";
+    uploadProgress.classList.add("show");
 
-    function nextBatch() {
+    function next() {
         if (index >= batches.length) {
-            progress.innerText = "Import completed successfully";
+            progressText.innerText = "Import completed successfully";
             return;
         }
 
-        progress.innerText = `Uploading batch ${index + 1} of ${batches.length}`;
+        progressText.innerText = `Uploading batch ${index + 1} of ${batches.length}`;
 
         addRecords(batches[index], index + 1)
-            .then(() => {
-                index++;
-                nextBatch();
-            })
+            .then(() => { index++; next(); })
             .catch(err => {
-                progress.style.display = "none";
+                uploadProgress.classList.remove("show");
                 alert(
-                    "Batch " + (index + 1) + " failed\n\n" +
+                    `Batch ${index + 1} failed\n\n` +
                     JSON.stringify(err, null, 2)
                 );
             });
     }
 
-    ZOHO.embeddedApp.init().then(nextBatch);
+    ZOHO.embeddedApp.init().then(next);
 }
 </script>
+
 </body>
 </html>
